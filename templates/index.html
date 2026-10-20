@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLScanner • Craigslist Tech Flip Finder</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#0b0f17',
+                        cardbg: '#131b2a',
+                        bordercolor: '#1e293b',
+                        accent: '#3b82f6',
+                        success: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0b0f17; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    </style>
+</head>
+<body class="bg-darkbg text-slate-100 min-h-screen font-sans antialiased" x-data="dashboardApp()" x-init="initDashboard()">
+
+    <!-- Toast Notification -->
+    <div x-show="toast.visible" x-cloak
+         x-transition:enter="transition ease-out duration-300 transform"
+         x-transition:enter-start="opacity-0 translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200 transform"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 translate-y-2"
+         class="fixed bottom-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium border"
+         :class="toast.type === 'error' ? 'bg-red-950/90 border-red-500 text-red-200' : 'bg-emerald-950/90 border-emerald-500 text-emerald-200'">
+        <i :data-lucide="toast.type === 'error' ? 'alert-triangle' : 'check-circle'" class="w-5 h-5"></i>
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- Navigation Bar -->
+    <header class="border-b border-bordercolor bg-cardbg/80 backdrop-blur sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i data-lucide="zap" class="w-6 h-6 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-blue-400 bg-clip-text text-transparent">CLScanner</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30 font-semibold">Always Free VM</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Craigslist Computer Flipping Radar (&lt;$250)</p>
+                </div>
+            </div>
+
+            <!-- Controls: Status & Scan Now -->
+            <div class="flex items-center gap-3">
+                <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-darkbg border border-bordercolor text-xs">
+                    <span class="relative flex h-2 w-2">
+                        <span :class="isScanning ? 'animate-ping bg-amber-400' : 'bg-emerald-400'" class="absolute inline-flex h-full w-full rounded-full opacity-75"></span>
+                        <span :class="isScanning ? 'bg-amber-500' : 'bg-emerald-500'" class="relative inline-flex rounded-full h-2 w-2"></span>
+                    </span>
+                    <span class="text-slate-400" x-text="isScanning ? 'Scanning Craigslist...' : 'Idle (Next in ' + countdown + 'm)'"></span>
+                </div>
+
+                <button @click="triggerScanNow()" :disabled="isScanning"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium text-sm transition-all shadow-lg shadow-blue-600/20 active:scale-95">
+                    <i data-lucide="refresh-cw" :class="isScanning ? 'animate-spin' : ''" class="w-4 h-4"></i>
+                    <span x-text="isScanning ? 'Scanning...' : 'Scan Now'"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 border-t border-bordercolor/60 overflow-x-auto">
+            <button @click="activeTab = 'deals'" :class="activeTab === 'deals' ? 'border-blue-500 text-blue-400 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-200'" class="py-3 px-4 border-b-2 text-sm flex items-center gap-2 transition-colors whitespace-nowrap">
+                <i data-lucide="tag" class="w-4 h-4"></i>
+                Deals Feed
+                <span class="px-2 py-0.2 rounded-full text-xs bg-slate-800 text-slate-300" x-text="deals.length"></span>
+            </button>
+            <button @click="activeTab = 'targets'" :class="activeTab === 'targets' ? 'border-blue-500 text-blue-400 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-200'" class="py-3 px-4 border-b-2 text-sm flex items-center gap-2 transition-colors whitespace-nowrap">
+                <i data-lucide="crosshair" class="w-4 h-4"></i>
+                Search Targets
+            </button>
+            <button @click="activeTab = 'rules'" :class="activeTab === 'rules' ? 'border-blue-500 text-blue-400 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-200'" class="py-3 px-4 border-b-2 text-sm flex items-center gap-2 transition-colors whitespace-nowrap">
+                <i data-lucide="sliders" class="w-4 h-4"></i>
+                Flip Rules & Comps
+            </button>
+            <button @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'border-blue-500 text-blue-400 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-200'" class="py-3 px-4 border-b-2 text-sm flex items-center gap-2 transition-colors whitespace-nowrap">
+                <i data-lucide="mail" class="w-4 h-4"></i>
+                Email Alerts & Config
+            </button>
+            <button @click="activeTab = 'logs'" :class="activeTab === 'logs' ? 'border-blue-500 text-blue-400 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-200'" class="py-3 px-4 border-b-2 text-sm flex items-center gap-2 transition-colors whitespace-nowrap">
+                <i data-lucide="history" class="w-4 h-4"></i>
+                Scan Logs
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-4 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                    <span>ACTIVE DEALS</span>
+                    <i data-lucide="layers" class="w-4 h-4 text-blue-400"></i>
+                </div>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-white" x-text="stats.total_active_deals || 0"></span>
+                    <span class="text-xs text-slate-400">under $250</span>
+                </div>
+            </div>
+
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-4 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                    <span>HIGH PROFIT (🔥🔥🔥)</span>
+                    <i data-lucide="flame" class="w-4 h-4 text-amber-500"></i>
+                </div>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-amber-400" x-text="stats.insane_deals || 0"></span>
+                    <span class="text-xs text-amber-500/80">&gt;$100 profit</span>
+                </div>
+            </div>
+
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-4 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                    <span>AVG ESTIMATED PROFIT</span>
+                    <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+                </div>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-emerald-400" x-text="'$' + (stats.avg_profit || 0)"></span>
+                    <span class="text-xs text-slate-400">per flip</span>
+                </div>
+            </div>
+
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-4 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                    <span>EMAIL NOTIFICATIONS</span>
+                    <i data-lucide="send" class="w-4 h-4" :class="stats.smtp_enabled ? 'text-emerald-400' : 'text-slate-500'"></i>
+                </div>
+                <div class="mt-2 flex items-center justify-between">
+                    <span class="text-sm font-semibold" :class="stats.smtp_enabled ? 'text-emerald-400' : 'text-slate-500'" x-text="stats.smtp_enabled ? 'Active' : 'Disabled'"></span>
+                    <button @click="activeTab = 'settings'" class="text-xs text-blue-400 hover:underline">Setup</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 1: DEALS FEED ================= -->
+        <div x-show="activeTab === 'deals'" class="space-y-4">
+            <!-- Filter & Search Toolbar -->
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <!-- Status Filter -->
+                    <select x-model="filters.status" @change="fetchDeals()" class="bg-darkbg border border-bordercolor text-slate-300 text-xs rounded-xl px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none">
+                        <option value="new">Status: Active Deals</option>
+                        <option value="starred">Starred / Saved</option>
+                        <option value="contacted">Contacted Seller</option>
+                        <option value="all">All (Include Archived)</option>
+                    </select>
+
+                    <!-- Score Filter -->
+                    <select x-model="filters.min_score" @change="fetchDeals()" class="bg-darkbg border border-bordercolor text-slate-300 text-xs rounded-xl px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none">
+                        <option value="">Rating: All Levels</option>
+                        <option value="3">🔥🔥🔥 Insane (+$100 profit)</option>
+                        <option value="2">🔥 Great (+$50 profit)</option>
+                        <option value="1">👍 Good (+$25 profit)</option>
+                    </select>
+
+                    <!-- Category Filter -->
+                    <select x-model="filters.category" @change="fetchDeals()" class="bg-darkbg border border-bordercolor text-slate-300 text-xs rounded-xl px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none">
+                        <option value="">Category: All</option>
+                        <option value="GPU">GPUs</option>
+                        <option value="System">Gaming PCs</option>
+                        <option value="Laptop">Laptops / MacBooks</option>
+                        <option value="CPU">CPUs & Mobos</option>
+                    </select>
+                </div>
+
+                <!-- Search Input -->
+                <div class="w-full md:w-72 relative">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+                    <input type="text" x-model.debounce.400ms="filters.search" @input="fetchDeals()" placeholder="Search title, GPU model, city..."
+                           class="w-full bg-darkbg border border-bordercolor rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div x-show="loadingDeals" class="py-16 text-center text-slate-400 space-y-3">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto text-blue-500"></i>
+                <p class="text-sm">Scanning for deals...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="!loadingDeals && deals.length === 0" class="py-16 text-center bg-cardbg border border-bordercolor rounded-2xl p-8 space-y-4">
+                <div class="w-16 h-16 mx-auto rounded-full bg-slate-800 flex items-center justify-center">
+                    <i data-lucide="inbox" class="w-8 h-8 text-slate-500"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-200">No matching deals found yet</h3>
+                <p class="text-sm text-slate-400 max-w-md mx-auto">
+                    Click <strong>"Scan Now"</strong> above to scrape Craigslist, or check your Search Targets to ensure your local city is configured.
+                </p>
+                <button @click="triggerScanNow()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition">
+                    Run Scan Now
+                </button>
+            </div>
+
+            <!-- Deals Grid -->
+            <div x-show="!loadingDeals && deals.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <template x-for="deal in deals" :key="deal.id">
+                    <div class="bg-cardbg border border-bordercolor rounded-2xl overflow-hidden flex flex-col justify-between hover:border-slate-600 transition-all shadow-lg group">
+                        
+                        <!-- Top Image & Rating Badge -->
+                        <div class="relative bg-slate-900 h-48 overflow-hidden">
+                            <template x-if="deal.image_url">
+                                <img :src="deal.image_url" :alt="deal.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                            </template>
+                            <template x-if="!deal.image_url">
+                                <div class="w-full h-full flex flex-col items-center justify-center text-slate-600">
+                                    <i data-lucide="image" class="w-12 h-12 mb-1"></i>
+                                    <span class="text-xs">No Photo Provided</span>
+                                </div>
+                            </template>
+
+                            <!-- Deal Score Badge -->
+                            <div class="absolute top-3 left-3">
+                                <span class="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider shadow-md backdrop-blur-md"
+                                      :class="deal.deal_score === 3 ? 'bg-red-500/90 text-white' : (deal.deal_score === 2 ? 'bg-amber-500/90 text-white' : 'bg-emerald-500/90 text-white')">
+                                    <span x-text="deal.deal_score === 3 ? '🔥🔥🔥 INSANE FLIP' : (deal.deal_score === 2 ? '🔥 GREAT DEAL' : '👍 GOOD FLIP')"></span>
+                                </span>
+                            </div>
+
+                            <!-- Star / Bookmark Button -->
+                            <button @click="toggleStar(deal)" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/80 backdrop-blur flex items-center justify-center hover:bg-slate-800 transition">
+                                <i data-lucide="star" :class="deal.status === 'starred' ? 'fill-amber-400 text-amber-400' : 'text-slate-400'" class="w-4 h-4"></i>
+                            </button>
+
+                            <!-- Matched Keyword Pill -->
+                            <div class="absolute bottom-3 left-3">
+                                <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-900/90 text-blue-300 border border-blue-500/30 backdrop-blur" x-text="deal.matched_rule"></span>
+                            </div>
+                        </div>
+
+                        <!-- Card Body -->
+                        <div class="p-4 flex-1 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-white line-clamp-2 leading-snug group-hover:text-blue-400 transition" x-text="deal.title"></h4>
+                                
+                                <div class="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-500"></i>
+                                    <span x-text="deal.location || deal.city"></span>
+                                    <span>•</span>
+                                    <span x-text="formatDate(deal.created_at)"></span>
+                                </div>
+                            </div>
+
+                            <!-- Resale Economics Box -->
+                            <div class="mt-4 bg-darkbg/70 border border-bordercolor rounded-xl p-3">
+                                <div class="grid grid-cols-3 text-center">
+                                    <div class="border-r border-bordercolor/60 pr-2">
+                                        <div class="text-[10px] text-slate-400 font-semibold uppercase">Buy Price</div>
+                                        <div class="text-base font-bold text-red-400" x-text="'$' + deal.price.toFixed(0)"></div>
+                                    </div>
+                                    <div class="border-r border-bordercolor/60 px-2">
+                                        <div class="text-[10px] text-slate-400 font-semibold uppercase">Est. Resale</div>
+                                        <div class="text-base font-bold text-sky-400" x-text="'$' + (deal.est_resale_value || 0).toFixed(0)"></div>
+                                    </div>
+                                    <div class="pl-2">
+                                        <div class="text-[10px] text-slate-400 font-semibold uppercase">Est. Profit</div>
+                                        <div class="text-base font-extrabold text-emerald-400" x-text="'+$' + (deal.est_profit || 0).toFixed(0)"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card Actions Footer -->
+                        <div class="p-4 pt-0 space-y-2">
+                            <div class="grid grid-cols-2 gap-2">
+                                <a :href="deal.url" target="_blank" rel="noopener noreferrer"
+                                   class="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition">
+                                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                                    Craigslist Post
+                                </a>
+                                <a :href="'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(deal.matched_rule) + '&LH_Sold=1&LH_Complete=1'" target="_blank" rel="noopener noreferrer"
+                                   class="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition">
+                                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                                    eBay Comps
+                                </a>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-2 border-t border-bordercolor/60 text-xs">
+                                <div class="flex items-center gap-2">
+                                    <button @click="setStatus(deal, 'contacted')" :class="deal.status === 'contacted' ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'" class="transition">
+                                        <span x-text="deal.status === 'contacted' ? '✓ Contacted' : 'Mark Contacted'"></span>
+                                    </button>
+                                </div>
+                                <button @click="setStatus(deal, 'archived')" class="text-slate-500 hover:text-red-400 transition" title="Dismiss / Archive deal">
+                                    Archive
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- ================= TAB 2: SEARCH TARGETS ================= -->
+        <div x-show="activeTab === 'targets'" class="space-y-6">
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-bordercolor pb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Craigslist Search Targets</h3>
+                        <p class="text-xs text-slate-400">Configure which cities and categories CLScanner checks automatically.</p>
+                    </div>
+                    <button @click="showAddTargetModal = true" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Add Search Target
+                    </button>
+                </div>
+
+                <!-- Targets Table -->
+                <div class="mt-4 overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="text-slate-400 uppercase border-b border-bordercolor">
+                            <tr>
+                                <th class="py-3 px-3">Status</th>
+                                <th class="py-3 px-3">City Subdomain</th>
+                                <th class="py-3 px-3">Category</th>
+                                <th class="py-3 px-3">Search Query</th>
+                                <th class="py-3 px-3">Max Price</th>
+                                <th class="py-3 px-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-bordercolor/60 text-slate-300">
+                            <template x-for="target in targets" :key="target.id">
+                                <tr class="hover:bg-slate-800/40">
+                                    <td class="py-3 px-3">
+                                        <button @click="toggleTarget(target)" class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                                                :class="target.enabled ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500'">
+                                            <span x-text="target.enabled ? 'Active' : 'Disabled'"></span>
+                                        </button>
+                                    </td>
+                                    <td class="py-3 px-3 font-semibold text-white" x-text="target.city"></td>
+                                    <td class="py-3 px-3">
+                                        <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono" x-text="target.category"></span>
+                                        <span class="text-slate-500 text-[11px] ml-1" x-text="target.category === 'sop' ? '(computer parts)' : (target.category === 'sys' ? '(computers)' : '(all computers)')"></span>
+                                    </td>
+                                    <td class="py-3 px-3 font-medium text-blue-300" x-text="target.query"></td>
+                                    <td class="py-3 px-3 font-semibold text-emerald-400" x-text="'$' + target.max_price"></td>
+                                    <td class="py-3 px-3 text-right">
+                                        <button @click="deleteTarget(target.id)" class="text-slate-500 hover:text-red-400 p-1">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 3: FLIP RULES ================= -->
+        <div x-show="activeTab === 'rules'" class="space-y-6">
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-bordercolor pb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Flip Benchmarks & Market Comps</h3>
+                        <p class="text-xs text-slate-400">Rules define maximum buy prices and typical resale values on eBay / Facebook Marketplace.</p>
+                    </div>
+                    <button @click="showAddRuleModal = true" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Add Flip Rule
+                    </button>
+                </div>
+
+                <div class="mt-4 overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="text-slate-400 uppercase border-b border-bordercolor">
+                            <tr>
+                                <th class="py-3 px-3">Keyword</th>
+                                <th class="py-3 px-3">Category</th>
+                                <th class="py-3 px-3">Max Buy</th>
+                                <th class="py-3 px-3">Est. Resale</th>
+                                <th class="py-3 px-3">Target Profit</th>
+                                <th class="py-3 px-3">Notes</th>
+                                <th class="py-3 px-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-bordercolor/60 text-slate-300">
+                            <template x-for="rule in rules" :key="rule.id">
+                                <tr class="hover:bg-slate-800/40">
+                                    <td class="py-3 px-3 font-bold text-white uppercase" x-text="rule.keyword"></td>
+                                    <td class="py-3 px-3">
+                                        <span class="px-2 py-0.5 rounded bg-slate-800 text-blue-300" x-text="rule.category"></span>
+                                    </td>
+                                    <td class="py-3 px-3 font-semibold text-red-400" x-text="'$' + rule.max_buy_price"></td>
+                                    <td class="py-3 px-3 font-semibold text-sky-400" x-text="'$' + rule.est_resale_value"></td>
+                                    <td class="py-3 px-3 font-extrabold text-emerald-400" x-text="'+$' + (rule.est_resale_value - rule.max_buy_price).toFixed(0)"></td>
+                                    <td class="py-3 px-3 text-slate-400 max-w-xs truncate" x-text="rule.notes || '-'"></td>
+                                    <td class="py-3 px-3 text-right">
+                                        <button @click="deleteRule(rule.id)" class="text-slate-500 hover:text-red-400 p-1">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 4: EMAIL ALERTS & SETTINGS ================= -->
+        <div x-show="activeTab === 'settings'" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <!-- Email SMTP Configuration -->
+                <div class="bg-cardbg border border-bordercolor rounded-2xl p-6 space-y-4">
+                    <div class="flex items-center justify-between border-b border-bordercolor pb-3">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="mail" class="w-5 h-5 text-blue-400"></i>
+                            <h3 class="text-base font-bold text-white">Email Notification Setup</h3>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" x-model="settings.smtp_enabled" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    <p class="text-xs text-slate-400">
+                        Get instant alerts when flip deals are discovered. Works with Gmail (App Password), Outlook, Yahoo, or any SMTP service.
+                    </p>
+
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Your Notification Email</label>
+                            <input type="email" x-model="settings.notify_email" placeholder="you@gmail.com"
+                                   class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">SMTP Host</label>
+                                <input type="text" x-model="settings.smtp_host" placeholder="smtp.gmail.com"
+                                       class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">SMTP Port</label>
+                                <input type="number" x-model.number="settings.smtp_port" placeholder="587"
+                                       class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">SMTP Username / Email</label>
+                            <input type="text" x-model="settings.smtp_user" placeholder="your_sender@gmail.com"
+                                   class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">SMTP Password / App Password</label>
+                            <input type="password" x-model="settings.smtp_pass" placeholder="••••••••••••••••"
+                                   class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                            <span class="text-[11px] text-slate-500 mt-1 block">For Gmail: Use a 16-character Google App Password (not your main Google account password).</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex items-center justify-between gap-3">
+                        <button @click="testEmail()" :disabled="testingEmail"
+                                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition flex items-center gap-2">
+                            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                            <span x-text="testingEmail ? 'Sending Test...' : 'Send Test Email'"></span>
+                        </button>
+                        <button @click="saveSettings()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition">
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scanner & Scraping Preferences -->
+                <div class="bg-cardbg border border-bordercolor rounded-2xl p-6 space-y-4">
+                    <div class="flex items-center gap-2 border-b border-bordercolor pb-3">
+                        <i data-lucide="clock" class="w-5 h-5 text-indigo-400"></i>
+                        <h3 class="text-base font-bold text-white">Scanner Engine Parameters</h3>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Scan Interval (Minutes)</label>
+                            <input type="number" x-model.number="settings.scan_interval_minutes" min="2" max="180"
+                                   class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                            <span class="text-[11px] text-slate-500 mt-1 block">Recommended: 10 - 20 minutes to prevent Craigslist IP throttling.</span>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Global Max Price ($)</label>
+                            <input type="number" x-model.number="settings.max_price_global"
+                                   class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                            <span class="text-[11px] text-slate-500 mt-1 block">Default: $250.00</span>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Negative Keywords Filter (One per line)</label>
+                            <textarea x-model="negativeKeywordsText" rows="6"
+                                      class="w-full bg-darkbg border border-bordercolor rounded-xl p-3 text-xs text-slate-300 focus:ring-1 focus:ring-blue-500 outline-none font-mono"></textarea>
+                            <span class="text-[11px] text-slate-500 mt-1 block">Listings with these terms will be automatically filtered out.</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 text-right">
+                        <button @click="saveSettings()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition">
+                            Save Preferences
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ================= TAB 5: SCAN LOGS ================= -->
+        <div x-show="activeTab === 'logs'" class="space-y-4">
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-6">
+                <div class="flex items-center justify-between border-b border-bordercolor pb-4">
+                    <h3 class="text-lg font-bold text-white">Craigslist Scan History</h3>
+                    <button @click="fetchLogs()" class="text-xs text-blue-400 hover:underline flex items-center gap-1">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh Logs
+                    </button>
+                </div>
+
+                <div class="mt-4 overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="text-slate-400 uppercase border-b border-bordercolor">
+                            <tr>
+                                <th class="py-2.5 px-3">Timestamp</th>
+                                <th class="py-2.5 px-3">City</th>
+                                <th class="py-2.5 px-3">Category : Query</th>
+                                <th class="py-2.5 px-3">Items Found</th>
+                                <th class="py-2.5 px-3">Deals Flagged</th>
+                                <th class="py-2.5 px-3">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-bordercolor/60 text-slate-300">
+                            <template x-for="log in logs" :key="log.id">
+                                <tr class="hover:bg-slate-800/40">
+                                    <td class="py-2.5 px-3 font-mono text-slate-400" x-text="log.timestamp"></td>
+                                    <td class="py-2.5 px-3 font-semibold text-white" x-text="log.city"></td>
+                                    <td class="py-2.5 px-3 font-mono text-blue-300" x-text="log.query"></td>
+                                    <td class="py-2.5 px-3" x-text="log.items_found"></td>
+                                    <td class="py-2.5 px-3 font-bold" :class="log.deals_detected > 0 ? 'text-emerald-400' : 'text-slate-500'" x-text="log.deals_detected"></td>
+                                    <td class="py-2.5 px-3 text-slate-400 truncate max-w-sm" x-text="log.status_message"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal: Add Search Target -->
+    <div x-show="showAddTargetModal" x-cloak class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-bordercolor rounded-2xl max-w-md w-full p-6 space-y-4" @click.outside="showAddTargetModal = false">
+            <div class="flex items-center justify-between border-b border-bordercolor pb-3">
+                <h3 class="font-bold text-white text-base">Add Craigslist Search Target</h3>
+                <button @click="showAddTargetModal = false" class="text-slate-500 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Craigslist City Subdomain</label>
+                    <input type="text" x-model="newTarget.city" placeholder="e.g. losangeles, sfbay, newyork, seattle"
+                           class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                    <span class="text-[11px] text-slate-500 mt-1 block">This is the subdomain in the URL (e.g. <code>sfbay</code> from <code>sfbay.craigslist.org</code>).</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Category</label>
+                        <select x-model="newTarget.category" class="w-full bg-darkbg border border-bordercolor text-slate-300 text-xs rounded-xl px-3 py-2 outline-none">
+                            <option value="sop">sop (Computer Parts)</option>
+                            <option value="sys">sys (Computers - by owner)</option>
+                            <option value="syp">syp (All Computers)</option>
+                            <option value="ele">ele (Electronics)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Max Price ($)</label>
+                        <input type="number" x-model.number="newTarget.max_price" placeholder="250"
+                               class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Search Query</label>
+                    <input type="text" x-model="newTarget.query" placeholder="e.g. rtx, rx, gaming pc, macbook"
+                           class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="pt-3 flex justify-end gap-2">
+                <button @click="showAddTargetModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Cancel</button>
+                <button @click="submitAddTarget()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold">Add Target</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add Flip Rule -->
+    <div x-show="showAddRuleModal" x-cloak class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-bordercolor rounded-2xl max-w-md w-full p-6 space-y-4" @click.outside="showAddRuleModal = false">
+            <div class="flex items-center justify-between border-b border-bordercolor pb-3">
+                <h3 class="font-bold text-white text-base">Add Custom Flip Benchmark</h3>
+                <button @click="showAddRuleModal = false" class="text-slate-500 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Target Keyword</label>
+                    <input type="text" x-model="newRule.keyword" placeholder="e.g. rtx 4070, rx 7800 xt, thinkpad x1"
+                           class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Max Buy Price ($)</label>
+                        <input type="number" x-model.number="newRule.max_buy_price" placeholder="250"
+                               class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Est. Resale Value ($)</label>
+                        <input type="number" x-model.number="newRule.est_resale_value" placeholder="350"
+                               class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Category</label>
+                        <select x-model="newRule.category" class="w-full bg-darkbg border border-bordercolor text-slate-300 text-xs rounded-xl px-3 py-2 outline-none">
+                            <option value="GPU">GPU</option>
+                            <option value="System">Gaming PC / System</option>
+                            <option value="Laptop">Laptop</option>
+                            <option value="CPU">CPU / Mobo</option>
+                            <option value="Component">Component</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Min. Flip Profit ($)</label>
+                        <input type="number" x-model.number="newRule.min_profit" placeholder="35"
+                               class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Notes</label>
+                    <input type="text" x-model="newRule.notes" placeholder="e.g. Check for box, check fans"
+                           class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="pt-3 flex justify-end gap-2">
+                <button @click="showAddRuleModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Cancel</button>
+                <button @click="submitAddRule()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold">Save Rule</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alpine.js Application Logic -->
+    <script>
+        function dashboardApp() {
+            return {
+                activeTab: 'deals',
+                deals: [],
+                targets: [],
+                rules: [],
+                logs: [],
+                stats: {},
+                settings: {},
+                negativeKeywordsText: '',
+                loadingDeals: false,
+                isScanning: false,
+                countdown: 15,
+                testingEmail: false,
+                showAddTargetModal: false,
+                showAddRuleModal: false,
+                
+                toast: { visible: false, message: '', type: 'success' },
+                showToast(msg, type = 'success') {
+                    this.toast.message = msg;
+                    this.toast.type = type;
+                    this.toast.visible = true;
+                    this.$nextTick(() => { lucide.createIcons(); });
+                    setTimeout(() => { this.toast.visible = false; }, 4000);
+                },
+
+                filters: {
+                    status: 'new',
+                    min_score: '',
+                    category: '',
+                    search: ''
+                },
+
+                newTarget: {
+                    city: 'losangeles',
+                    category: 'sop',
+                    query: '',
+                    max_price: 250
+                },
+
+                newRule: {
+                    keyword: '',
+                    category: 'GPU',
+                    max_buy_price: 200,
+                    est_resale_value: 280,
+                    min_profit: 40,
+                    notes: ''
+                },
+
+                async initDashboard() {
+                    await this.fetchStats();
+                    await this.fetchDeals();
+                    await this.fetchTargets();
+                    await this.fetchRules();
+                    await this.fetchSettings();
+                    await this.fetchLogs();
+                    
+                    this.$nextTick(() => { lucide.createIcons(); });
+
+                    // Poll status & stats every 10 seconds
+                    setInterval(() => {
+                        this.pollStatus();
+                    }, 10000);
+                },
+
+                async pollStatus() {
+                    try {
+                        const res = await fetch('/api/scan-status');
+                        const data = await res.json();
+                        const wasScanning = this.isScanning;
+                        this.isScanning = data.is_scanning;
+                        if (wasScanning && !data.is_scanning) {
+                            // Scan just finished
+                            this.fetchDeals();
+                            this.fetchStats();
+                            this.fetchLogs();
+                            this.showToast('Craigslist scan finished!');
+                        }
+                    } catch (e) {
+                        console.error('Poll status error:', e);
+                    }
+                },
+
+                async fetchStats() {
+                    try {
+                        const res = await fetch('/api/stats');
+                        this.stats = await res.json();
+                        this.isScanning = this.stats.is_scanning;
+                        this.countdown = this.stats.scan_interval_minutes || 15;
+                    } catch (e) {
+                        console.error('Fetch stats error:', e);
+                    }
+                },
+
+                async fetchDeals() {
+                    this.loadingDeals = true;
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.filters.status) params.append('status', this.filters.status);
+                        if (this.filters.min_score) params.append('min_score', this.filters.min_score);
+                        if (this.filters.category) params.append('category', this.filters.category);
+                        if (this.filters.search) params.append('search', this.filters.search);
+                        
+                        const res = await fetch('/api/deals?' + params.toString());
+                        const data = await res.json();
+                        this.deals = data.deals || [];
+                    } catch (e) {
+                        this.showToast('Failed to load deals', 'error');
+                    } finally {
+                        this.loadingDeals = false;
+                        this.$nextTick(() => { lucide.createIcons(); });
+                    }
+                },
+
+                async triggerScanNow() {
+                    try {
+                        this.isScanning = true;
+                        const res = await fetch('/api/scan-now', { method: 'POST' });
+                        const data = await res.json();
+                        this.showToast(data.message || 'Background scan triggered');
+                    } catch (e) {
+                        this.showToast('Failed to trigger scan', 'error');
+                        this.isScanning = false;
+                    }
+                },
+
+                async toggleStar(deal) {
+                    const newStatus = deal.status === 'starred' ? 'new' : 'starred';
+                    await this.setStatus(deal, newStatus);
+                },
+
+                async setStatus(deal, status) {
+                    try {
+                        const res = await fetch(`/api/deals/${deal.id}/status`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status })
+                        });
+                        if (res.ok) {
+                            deal.status = status;
+                            if (status === 'archived') {
+                                this.deals = this.deals.filter(d => d.id !== deal.id);
+                                this.showToast('Deal archived');
+                            } else {
+                                this.showToast(`Deal marked as ${status}`);
+                            }
+                            this.fetchStats();
+                        }
+                    } catch (e) {
+                        this.showToast('Error updating deal status', 'error');
+                    }
+                },
+
+                async fetchTargets() {
+                    try {
+                        const res = await fetch('/api/targets');
+                        const data = await res.json();
+                        this.targets = data.targets || [];
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+
+                async toggleTarget(target) {
+                    try {
+                        const res = await fetch(`/api/targets/${target.id}/toggle`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: !target.enabled })
+                        });
+                        if (res.ok) {
+                            target.enabled = target.enabled ? 0 : 1;
+                            this.showToast(`Target ${target.enabled ? 'enabled' : 'disabled'}`);
+                        }
+                    } catch (e) {
+                        this.showToast('Error toggling target', 'error');
+                    }
+                },
+
+                async deleteTarget(id) {
+                    if (!confirm('Delete this search target?')) return;
+                    try {
+                        await fetch(`/api/targets/${id}`, { method: 'DELETE' });
+                        this.targets = this.targets.filter(t => t.id !== id);
+                        this.showToast('Target deleted');
+                    } catch (e) {
+                        this.showToast('Error deleting target', 'error');
+                    }
+                },
+
+                async submitAddTarget() {
+                    if (!this.newTarget.city || !this.newTarget.query) {
+                        this.showToast('City and search query are required', 'error');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/targets', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newTarget)
+                        });
+                        if (res.ok) {
+                            this.showToast('Search target added!');
+                            this.showAddTargetModal = false;
+                            this.fetchTargets();
+                            this.newTarget.query = '';
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to add target', 'error');
+                    }
+                },
+
+                async fetchRules() {
+                    try {
+                        const res = await fetch('/api/rules');
+                        const data = await res.json();
+                        this.rules = data.rules || [];
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+
+                async deleteRule(id) {
+                    if (!confirm('Delete this flip rule?')) return;
+                    try {
+                        await fetch(`/api/rules/${id}`, { method: 'DELETE' });
+                        this.rules = this.rules.filter(r => r.id !== id);
+                        this.showToast('Rule deleted');
+                    } catch (e) {
+                        this.showToast('Error deleting rule', 'error');
+                    }
+                },
+
+                async submitAddRule() {
+                    if (!this.newRule.keyword || !this.newRule.est_resale_value) {
+                        this.showToast('Keyword and estimated resale value are required', 'error');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/rules', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newRule)
+                        });
+                        if (res.ok) {
+                            this.showToast('Flip rule added!');
+                            this.showAddRuleModal = false;
+                            this.fetchRules();
+                            this.newRule.keyword = '';
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to save flip rule', 'error');
+                    }
+                },
+
+                async fetchSettings() {
+                    try {
+                        const res = await fetch('/api/settings');
+                        this.settings = await res.json();
+                        this.settings.smtp_enabled = this.settings.smtp_enabled === 'true';
+                        this.settings.smtp_use_tls = this.settings.smtp_use_tls === 'true';
+                        this.settings.smtp_port = parseInt(this.settings.smtp_port || 587);
+                        this.settings.scan_interval_minutes = parseInt(this.settings.scan_interval_minutes || 15);
+                        this.settings.max_price_global = parseFloat(this.settings.max_price_global || 250);
+                        
+                        const negList = this.settings.negative_keywords_list || [];
+                        this.negativeKeywordsText = negList.join('\n');
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+
+                async saveSettings() {
+                    try {
+                        const negList = this.negativeKeywordsText
+                            .split('\n')
+                            .map(s => s.trim())
+                            .filter(Boolean);
+
+                        const payload = {
+                            smtp_enabled: this.settings.smtp_enabled,
+                            smtp_host: this.settings.smtp_host,
+                            smtp_port: this.settings.smtp_port,
+                            smtp_user: this.settings.smtp_user,
+                            smtp_pass: this.settings.smtp_pass,
+                            smtp_use_tls: this.settings.smtp_use_tls,
+                            notify_email: this.settings.notify_email,
+                            scan_interval_minutes: this.settings.scan_interval_minutes,
+                            max_price_global: this.settings.max_price_global,
+                            negative_keywords: negList
+                        };
+
+                        const res = await fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (res.ok) {
+                            this.showToast('Settings saved successfully!');
+                            this.fetchStats();
+                        } else {
+                            this.showToast('Failed to save settings', 'error');
+                        }
+                    } catch (e) {
+                        this.showToast('Error saving settings', 'error');
+                    }
+                },
+
+                async testEmail() {
+                    if (!this.settings.notify_email || !this.settings.smtp_host || !this.settings.smtp_user || !this.settings.smtp_pass) {
+                        this.showToast('Please fill out all SMTP fields and notification email first', 'error');
+                        return;
+                    }
+                    this.testingEmail = true;
+                    try {
+                        const payload = {
+                            to_email: this.settings.notify_email,
+                            smtp_host: this.settings.smtp_host,
+                            smtp_port: this.settings.smtp_port,
+                            smtp_user: this.settings.smtp_user,
+                            smtp_pass: this.settings.smtp_pass,
+                            smtp_use_tls: this.settings.smtp_use_tls
+                        };
+                        const res = await fetch('/api/test-email', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                            this.showToast('Test email sent! Check your inbox 📬');
+                        } else {
+                            this.showToast(data.detail || 'Test email failed', 'error');
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to connect to SMTP server', 'error');
+                    } finally {
+                        this.testingEmail = false;
+                    }
+                },
+
+                async fetchLogs() {
+                    try {
+                        const res = await fetch('/api/logs');
+                        const data = await res.json();
+                        this.logs = data.logs || [];
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+
+                formatDate(isoStr) {
+                    if (!isoStr) return '';
+                    try {
+                        const d = new Date(isoStr);
+                        return d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    } catch (e) {
+                        return isoStr;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
