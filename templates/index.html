@@ -330,6 +330,10 @@
                         <p class="text-xs text-slate-400">Configure which cities and categories CLScanner checks automatically.</p>
                     </div>
                     <div class="flex items-center gap-2">
+                        <button @click="switchToSanJoseSantaCruz()" class="px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition" title="Excludes San Francisco and sets searches strictly to San Jose / South Bay and Santa Cruz">
+                            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-400"></i>
+                            San Jose & Santa Cruz (No SF)
+                        </button>
                         <button @click="splitTargets()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition" title="If you have targets with multiple comma-separated keywords, this splits each into its own individual target">
                             <i data-lucide="split" class="w-3.5 h-3.5 text-blue-400"></i>
                             Split Multi-Keywords
@@ -594,10 +598,24 @@
 
             <div class="space-y-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Craigslist City Subdomain</label>
-                    <input type="text" x-model="newTarget.city" placeholder="e.g. losangeles, sfbay, newyork, seattle"
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Craigslist City / Subarea</label>
+                    <input type="text" x-model="newTarget.city" placeholder="e.g. sfbay/sby (San Jose), sfbay/scz (Santa Cruz)"
                            class="w-full bg-darkbg border border-bordercolor rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none">
-                    <span class="text-[11px] text-slate-500 mt-1 block">This is the subdomain in the URL (e.g. <code>sfbay</code> from <code>sfbay.craigslist.org</code>).</span>
+                    <!-- Quick Region Selector Buttons -->
+                    <div class="flex flex-wrap gap-1.5 mt-2">
+                        <button type="button" @click="newTarget.city = 'sfbay/sby'" class="text-[11px] px-2 py-0.5 rounded-lg bg-blue-950/60 hover:bg-blue-900 border border-blue-500/30 text-blue-300">
+                            📍 San Jose (South Bay)
+                        </button>
+                        <button type="button" @click="newTarget.city = 'sfbay/scz'" class="text-[11px] px-2 py-0.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-300">
+                            📍 Santa Cruz
+                        </button>
+                        <button type="button" @click="newTarget.city = 'sfbay/sby, sfbay/scz'" class="text-[11px] px-2 py-0.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-500/30 text-indigo-300">
+                            📍 Both (SJ + Santa Cruz)
+                        </button>
+                    </div>
+                    <span class="text-[11px] text-slate-400 mt-1.5 block">
+                        💡 To exclude San Francisco, use <code>sfbay/sby</code> (San Jose / South Bay) and <code>sfbay/scz</code> (Santa Cruz).
+                    </span>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
@@ -926,6 +944,20 @@
                         }
                     } catch (e) {
                         this.showToast('Error splitting targets', 'error');
+                    }
+                },
+
+                async switchToSanJoseSantaCruz() {
+                    if (!confirm("This will configure your search targets specifically for San Jose / South Bay (sfbay/sby) and Santa Cruz (sfbay/scz), excluding San Francisco. Proceed?")) return;
+                    try {
+                        const res = await fetch('/api/targets/switch-sanjose-santacruz', { method: 'POST' });
+                        const data = await res.json();
+                        if (res.ok) {
+                            this.showToast(`Updated ${data.updated_count} targets to San Jose & Santa Cruz!`);
+                            this.fetchTargets();
+                        }
+                    } catch (e) {
+                        this.showToast('Error switching region', 'error');
                     }
                 },
 

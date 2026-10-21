@@ -364,6 +364,30 @@ def delete_search_target(target_id: int):
         cursor.execute("DELETE FROM search_targets WHERE id = ?", (target_id,))
         conn.commit()
 
+def set_region_sanjose_santacruz() -> int:
+    """
+    Updates any targets that were set to generic 'sfbay' to specifically target:
+    - San Jose / South Bay ('sfbay/sby')
+    - Santa Cruz ('sfbay/scz')
+    Excluding San Francisco proper.
+    """
+    updated_count = 0
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, city, category, query, max_price, enabled FROM search_targets WHERE city = 'sfbay' OR city = 'sf' OR city = 'losangeles'")
+        old_targets = cursor.fetchall()
+        for t in old_targets:
+            # Change existing to San Jose
+            cursor.execute("UPDATE search_targets SET city = 'sfbay/sby' WHERE id = ?", (t["id"],))
+            # Create matching target for Santa Cruz
+            cursor.execute("""
+                INSERT INTO search_targets (city, category, query, max_price, enabled)
+                VALUES ('sfbay/scz', ?, ?, ?, ?)
+            """, (t["category"], t["query"], t["max_price"], t["enabled"]))
+            updated_count += 2
+        conn.commit()
+    return updated_count
+
 # --- Flip Rules Helpers ---
 
 def get_flip_rules() -> List[Dict[str, Any]]:

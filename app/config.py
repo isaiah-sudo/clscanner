@@ -209,13 +209,19 @@ DEFAULT_FLIP_RULES = [
     }
 ]
 
-# Default Search Targets
+# Default Search Targets (Configured for San Jose / South Bay and Santa Cruz)
 DEFAULT_SEARCH_TARGETS = [
-    {"city": "losangeles", "category": "sop", "query": "rtx", "max_price": 250.0},
-    {"city": "losangeles", "category": "sop", "query": "gtx", "max_price": 250.0},
-    {"city": "losangeles", "category": "sop", "query": "rx", "max_price": 250.0},
-    {"city": "losangeles", "category": "sys", "query": "gaming pc", "max_price": 250.0},
-    {"city": "losangeles", "category": "syp", "query": "gaming laptop", "max_price": 250.0},
-    {"city": "losangeles", "category": "syp", "query": "macbook m1", "max_price": 250.0},
-    {"city": "losangeles", "category": "sop", "query": "ryzen", "max_price": 250.0},
+    # San Jose / South Bay (excludes San Francisco)
+    {"city": "sfbay/sby", "category": "sop", "query": "rtx", "max_price": 250.0},
+    {"city": "sfbay/sby", "category": "sop", "query": "rx", "max_price": 250.0},
+    {"city": "sfbay/sby", "category": "sys", "query": "gaming pc", "max_price": 250.0},
+    {"city": "sfbay/sby", "category": "syp", "query": "gaming laptop", "max_price": 250.0},
+    {"city": "sfbay/sby", "category": "syp", "query": "macbook", "max_price": 250.0},
+    {"city": "sfbay/sby", "category": "sop", "query": "ryzen", "max_price": 250.0},
+    
+    # Santa Cruz (excludes San Francisco)
+    {"city": "sfbay/scz", "category": "sop", "query": "rtx", "max_price": 250.0},
+    {"city": "sfbay/scz", "category": "sys", "query": "gaming pc", "max_price": 250.0},
+    {"city": "sfbay/scz", "category": "syp", "query": "gaming laptop", "max_price": 250.0},
+    {"city": "sfbay/scz", "category": "syp", "query": "macbook", "max_price": 250.0},
 ]

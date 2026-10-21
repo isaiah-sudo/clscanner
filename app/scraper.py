@@ -9,6 +9,68 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("clscanner.scraper")
 
+# Region & Subarea Aliases (Maps friendly names to Craigslist domain & subarea code)
+LOCATION_ALIASES = {
+    # San Jose & South Bay (excludes San Francisco)
+    "sanjose": ("sfbay", "sby", "San Jose"),
+    "san jose": ("sfbay", "sby", "San Jose"),
+    "south bay": ("sfbay", "sby", "San Jose"),
+    "southbay": ("sfbay", "sby", "San Jose"),
+    "sby": ("sfbay", "sby", "San Jose"),
+    "sfbay/sby": ("sfbay", "sby", "San Jose"),
+    "sfbay:sby": ("sfbay", "sby", "San Jose"),
+
+    # Santa Cruz (excludes San Francisco)
+    "santacruz": ("sfbay", "scz", "Santa Cruz"),
+    "santa cruz": ("sfbay", "scz", "Santa Cruz"),
+    "scz": ("sfbay", "scz", "Santa Cruz"),
+    "sfbay/scz": ("sfbay", "scz", "Santa Cruz"),
+    "sfbay:scz": ("sfbay", "scz", "Santa Cruz"),
+
+    # Other Bay Area subareas if needed
+    "eastbay": ("sfbay", "eby", "East Bay"),
+    "east bay": ("sfbay", "eby", "East Bay"),
+    "eby": ("sfbay", "eby", "East Bay"),
+    "sfbay/eby": ("sfbay", "eby", "East Bay"),
+
+    "peninsula": ("sfbay", "pen", "Peninsula"),
+    "pen": ("sfbay", "pen", "Peninsula"),
+    "sfbay/pen": ("sfbay", "pen", "Peninsula"),
+
+    "northbay": ("sfbay", "nby", "North Bay"),
+    "north bay": ("sfbay", "nby", "North Bay"),
+    "nby": ("sfbay", "nby", "North Bay"),
+    "sfbay/nby": ("sfbay", "nby", "North Bay"),
+
+    "sf": ("sfbay", "sfc", "San Francisco"),
+    "san francisco": ("sfbay", "sfc", "San Francisco"),
+    "sfc": ("sfbay", "sfc", "San Francisco"),
+    "sfbay/sfc": ("sfbay", "sfc", "San Francisco"),
+}
+
+def parse_craigslist_location(city_input: str):
+    """
+    Parses a city or subarea input into (domain, subarea, display_name).
+    Supports formats like 'sanjose', 'santa cruz', 'sfbay/sby', 'sfbay/scz', 'losangeles', etc.
+    """
+    clean = city_input.strip().lower()
+    if clean in LOCATION_ALIASES:
+        return LOCATION_ALIASES[clean]
+        
+    if "/" in clean:
+        parts = clean.split("/", 1)
+        domain, sub = parts[0].strip(), parts[1].strip()
+        name = "San Jose" if sub == "sby" else ("Santa Cruz" if sub == "scz" else f"{domain}/{sub}")
+        return domain, sub, name
+        
+    if ":" in clean:
+        parts = clean.split(":", 1)
+        domain, sub = parts[0].strip(), parts[1].strip()
+        name = "San Jose" if sub == "sby" else ("Santa Cruz" if sub == "scz" else f"{domain}/{sub}")
+        return domain, sub, name
+        
+    return clean, None, clean.capitalize()
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -29,13 +91,18 @@ def fetch_craigslist_search(city: str, category: str, query: str, max_price: flo
     """
     Scrapes Craigslist search results for the given query and price ceiling.
     Combines embedded JSON-LD metadata (images, geo, exact price) with HTML cards.
+    Supports subareas like San Jose ('sfbay/sby') and Santa Cruz ('sfbay/scz') to isolate them from SF.
     """
-    city_clean = city.strip().lower()
+    domain, subarea, display_name = parse_craigslist_location(city)
     cat_clean = category.strip()
     query_clean = query.strip()
     
-    # Construct search URL
-    base_url = f"https://{city_clean}.craigslist.org/search/{cat_clean}"
+    # Construct search URL (using subarea if specified to isolate San Jose or Santa Cruz)
+    if subarea:
+        base_url = f"https://{domain}.craigslist.org/search/{subarea}/{cat_clean}"
+    else:
+        base_url = f"https://{domain}.craigslist.org/search/{cat_clean}"
+
     params = {
         "query": query_clean,
         "max_price": int(max_price) if max_price.is_integer() else max_price,
@@ -51,7 +118,7 @@ def fetch_craigslist_search(city: str, category: str, query: str, max_price: flo
     try:
         resp = requests.get(base_url, params=params, headers=headers, timeout=12)
         if resp.status_code != 200:
-            logger.warning(f"Craigslist responded with HTTP {resp.status_code} for {city_clean} - {query_clean}")
+            logger.warning(f"Craigslist responded with HTTP {resp.status_code} for {display_name} - {query_clean}")
             return []
             
         html = resp.text
@@ -104,7 +171,7 @@ def fetch_craigslist_search(city: str, category: str, query: str, max_price: flo
                 
             # If URL is relative, prepend domain
             if url.startswith("/"):
-                url = f"https://{city_clean}.craigslist.org{url}"
+                url = f"https://{domain}.craigslist.org{url}"
                 
             # Title
             title = j_it.get("name") or h_it.get("title") or ""
@@ -144,14 +211,14 @@ def fetch_craigslist_search(city: str, category: str, query: str, max_price: flo
                 "price": price,
                 "url": url,
                 "image_url": image_url,
-                "location": location,
-                "city": city_clean,
+                "location": location or display_name,
+                "city": display_name,
                 "category": cat_clean
             })
             
-        logger.info(f"Scraped {len(results)} items for {city_clean} query='{query_clean}'")
+        logger.info(f"Scraped {len(results)} items for {display_name} query='{query_clean}'")
         return results
         
     except Exception as e:
-        logger.error(f"Error scraping Craigslist for {city_clean} - {query_clean}: {e}")
+        logger.error(f"Error scraping Craigslist for {display_name} - {query_clean}: {e}")
         return []

@@ -23,6 +23,7 @@ from app.database import (
     toggle_search_target,
     delete_search_target,
     split_composite_targets,
+    set_region_sanjose_santacruz,
     get_flip_rules,
     add_flip_rule,
     update_flip_rule,
@@ -183,6 +184,11 @@ def api_add_target(req: TargetCreateRequest):
 def api_split_targets():
     count = split_composite_targets()
     return {"success": True, "split_count": count}
+
+@app.post("/api/targets/switch-sanjose-santacruz")
+def api_switch_sanjose_santacruz():
+    count = set_region_sanjose_santacruz()
+    return {"success": True, "updated_count": count}
 
 @app.post("/api/targets/{target_id}/toggle")
 def api_toggle_target(target_id: int, req: TargetToggleRequest):
