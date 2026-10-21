@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException, Depends
@@ -21,6 +22,7 @@ from app.database import (
     add_search_target,
     toggle_search_target,
     delete_search_target,
+    split_composite_targets,
     get_flip_rules,
     add_flip_rule,
     update_flip_rule,
@@ -165,8 +167,22 @@ def api_get_targets():
 
 @app.post("/api/targets")
 def api_add_target(req: TargetCreateRequest):
-    target_id = add_search_target(req.city, req.category, req.query, req.max_price)
-    return {"success": True, "id": target_id}
+    # Support multiple cities if comma-separated
+    cities = [c.strip().lower() for c in re.split(r'[,;\n]+', req.city) if c.strip()]
+    if not cities:
+        cities = [req.city.strip().lower()]
+        
+    all_created_ids = []
+    for city in cities:
+        ids = add_search_target(city, req.category, req.query, req.max_price)
+        all_created_ids.extend(ids)
+        
+    return {"success": True, "ids": all_created_ids, "count": len(all_created_ids)}
+
+@app.post("/api/targets/split")
+def api_split_targets():
+    count = split_composite_targets()
+    return {"success": True, "split_count": count}
 
 @app.post("/api/targets/{target_id}/toggle")
 def api_toggle_target(target_id: int, req: TargetToggleRequest):

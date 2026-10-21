@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import logging
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.config import (
@@ -145,6 +146,31 @@ def init_db():
                 ))
                 
         conn.commit()
+
+        # Automatically migrate/split any composite targets containing commas/newlines
+        split_composite_targets()
+
+def split_composite_targets() -> int:
+    """Finds any search target that contains comma/newline separated queries and splits them into individual targets."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, city, category, query, max_price, enabled FROM search_targets")
+        targets = cursor.fetchall()
+        split_count = 0
+        for t in targets:
+            q = t["query"]
+            parts = [p.strip() for p in re.split(r'[,;\n]+', q) if p.strip()]
+            if len(parts) > 1:
+                # Delete the composite target
+                cursor.execute("DELETE FROM search_targets WHERE id = ?", (t["id"],))
+                for part in parts:
+                    cursor.execute("""
+                        INSERT INTO search_targets (city, category, query, max_price, enabled)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (t["city"], t["category"], part, t["max_price"], t["enabled"]))
+                split_count += len(parts)
+        conn.commit()
+        return split_count
 
 # --- Settings Helpers ---
 
@@ -308,15 +334,23 @@ def get_search_targets() -> List[Dict[str, Any]]:
         cursor.execute("SELECT * FROM search_targets ORDER BY id ASC")
         return [dict(row) for row in cursor.fetchall()]
 
-def add_search_target(city: str, category: str, query: str, max_price: float) -> int:
+def add_search_target(city: str, category: str, query: str, max_price: float) -> List[int]:
+    """Adds search targets. If query contains commas, semicolons or newlines, splits into individual targets automatically."""
+    parts = [p.strip() for p in re.split(r'[,;\n]+', query) if p.strip()]
+    if not parts:
+        parts = [query.strip()]
+        
+    created_ids = []
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO search_targets (city, category, query, max_price, enabled)
-            VALUES (?, ?, ?, ?, 1)
-        """, (city.strip().lower(), category.strip(), query.strip(), max_price))
+        for p in parts:
+            cursor.execute("""
+                INSERT INTO search_targets (city, category, query, max_price, enabled)
+                VALUES (?, ?, ?, ?, 1)
+            """, (city.strip().lower(), category.strip(), p, max_price))
+            created_ids.append(cursor.lastrowid)
         conn.commit()
-        return cursor.lastrowid
+    return created_ids
 
 def toggle_search_target(target_id: int, enabled: bool):
     with get_connection() as conn:

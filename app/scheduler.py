@@ -1,6 +1,7 @@
 import threading
 import time
 import logging
+import re
 from datetime import datetime
 from typing import Dict, Any, List
 from app.database import (
@@ -66,37 +67,43 @@ class ScanScheduler:
             for target in enabled_targets:
                 city = target["city"]
                 cat = target["category"]
-                query = target["query"]
+                raw_query = target["query"]
                 max_price = float(target.get("max_price", 250.0))
                 
-                # Fetch raw items
-                items = fetch_craigslist_search(city, cat, query, max_price)
-                total_items_scraped += len(items)
-                target_deals_count = 0
+                # Split any comma, semicolon, or newline separated keywords so each is searched individually!
+                sub_queries = [q.strip() for q in re.split(r'[,;\n]+', raw_query) if q.strip()]
+                if not sub_queries:
+                    sub_queries = [raw_query]
                 
-                for it in items:
-                    deal = analyze_listing(it)
-                    if deal:
-                        is_new = insert_deal(deal)
-                        if is_new:
-                            new_deals_found += 1
-                            target_deals_count += 1
-                            # Dispatch email alert if configured
-                            try:
-                                notify_deal_if_enabled(deal)
-                            except Exception as ne:
-                                logger.error(f"Notification error for deal {deal.get('id')}: {ne}")
-                                
-                log_scan_event(
-                    city=city,
-                    query=f"{cat}:{query}",
-                    items_found=len(items),
-                    deals_detected=target_deals_count,
-                    status_message=f"Found {len(items)} items, {target_deals_count} new flip deals"
-                )
-                
-                # Small pause between targets to avoid rate limiting
-                time.sleep(1.0)
+                for query in sub_queries:
+                    # Fetch raw items for this individual query
+                    items = fetch_craigslist_search(city, cat, query, max_price)
+                    total_items_scraped += len(items)
+                    target_deals_count = 0
+                    
+                    for it in items:
+                        deal = analyze_listing(it)
+                        if deal:
+                            is_new = insert_deal(deal)
+                            if is_new:
+                                new_deals_found += 1
+                                target_deals_count += 1
+                                # Dispatch email alert if configured
+                                try:
+                                    notify_deal_if_enabled(deal)
+                                except Exception as ne:
+                                    logger.error(f"Notification error for deal {deal.get('id')}: {ne}")
+                                    
+                    log_scan_event(
+                        city=city,
+                        query=f"{cat}:{query}",
+                        items_found=len(items),
+                        deals_detected=target_deals_count,
+                        status_message=f"Found {len(items)} items, {target_deals_count} new flip deals"
+                    )
+                    
+                    # Small pause between queries to avoid rate limiting
+                    time.sleep(1.0)
                 
             finish_time = datetime.now()
             duration = (finish_time - start_time).total_seconds()
